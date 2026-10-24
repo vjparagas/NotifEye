@@ -1,0 +1,35 @@
+# Local development services for NotifEye.
+#   - postgres: app database (+ a separate `notifeye_test` database for the test suite)
+#   - mailpit : catches outgoing email (SMTP :1025, web UI http://localhost:8025)
+# The backend and dashboard run on the host with `npm run dev`.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: notifeye-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-notifeye}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-notifeye_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-notifeye}
+    ports:
+      # Loopback only: the dev database must never be reachable from the LAN.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - notifeye_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-notifeye} -d ${POSTGRES_DB:-notifeye}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: notifeye-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  notifeye_pgdata:

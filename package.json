@@ -1,0 +1,25 @@
+{
+  "name": "notifeye",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live student status and automatic attendance for Zoom and Google Meet web meetings.",
+  "workspaces": [
+    "shared",
+    "backend",
+    "dashboard",
+    "extension",
+    "docs"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "migrate": "npm run migrate -w backend",
+    "db:check": "npm run db:check -w backend",
+    "dev:backend": "npm run dev -w backend",
+    "build:extension": "npm run build -w extension",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@notifeye/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Professor/student web dashboard. Placeholder workspace: implementation starts in a later phase."
+}
