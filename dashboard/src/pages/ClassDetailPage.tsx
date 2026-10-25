@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router';
 import type {
+  AttendanceRecordDTO,
+  AttendanceStatus,
   ClassDetailDTO,
   EnrollmentDTO,
   SessionDTO,
@@ -9,7 +11,7 @@ import type {
 } from '@notifeye/shared';
 import { api, errorMessage } from '../api';
 import { AppShell } from '../components/AppShell';
-import { Button, Chip, CopyButton, InputField, Modal } from '../components/ui';
+import { Button, Chip, CopyButton, InputField, Modal, SelectField } from '../components/ui';
 
 export function ClassDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +35,21 @@ export function ClassDetailPage() {
   const [graceMinutes, setGraceMinutes] = useState(10);
   const [sessionCreating, setSessionCreating] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+
+  // Attendance state (Phase 4)
+  const [selectedSession, setSelectedSession] = useState<SessionDTO | null>(null);
+  const [attendanceList, setAttendanceList] = useState<AttendanceRecordDTO[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
+
+  // Attendance override state
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [overrideRecord, setOverrideRecord] = useState<AttendanceRecordDTO | null>(null);
+  const [overrideStatus, setOverrideStatus] = useState<AttendanceStatus>('present');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   const loadData = async () => {
     if (!id) return;
@@ -130,6 +147,50 @@ export function ClassDetailPage() {
       setSessionError(errorMessage(err));
     } finally {
       setSessionCreating(false);
+    }
+  };
+
+  const handleOpenAttendance = async (session: SessionDTO) => {
+    setSelectedSession(session);
+    setIsAttendanceModalOpen(true);
+    setAttendanceLoading(true);
+    setAttendanceError(null);
+    try {
+      const res = await api.sessionAttendance(session.id);
+      setAttendanceList(res.attendance);
+    } catch (err) {
+      setAttendanceError(errorMessage(err));
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  const handleStartOverride = (rec: AttendanceRecordDTO) => {
+    setOverrideRecord(rec);
+    setOverrideStatus(rec.status);
+    setOverrideReason('');
+    setOverrideError(null);
+    setIsOverrideModalOpen(true);
+  };
+
+  const handleSaveOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!overrideRecord) return;
+    setOverrideSaving(true);
+    setOverrideError(null);
+    try {
+      const res = await api.overrideAttendance(overrideRecord.id, {
+        status: overrideStatus,
+        reason: overrideReason.trim() || undefined,
+      });
+      setAttendanceList((prev) =>
+        prev.map((a) => (a.id === overrideRecord.id ? res.attendance : a)),
+      );
+      setIsOverrideModalOpen(false);
+    } catch (err) {
+      setOverrideError(errorMessage(err));
+    } finally {
+      setOverrideSaving(false);
     }
   };
 
@@ -445,13 +506,23 @@ export function ClassDetailPage() {
                             {sess.grace_minutes} min
                           </td>
                           <td className="py-3 px-3 text-right">
-                            {isActive ? (
-                              <Chip tone="ok">Live Now</Chip>
-                            ) : isPast ? (
-                              <Chip tone="off">Completed</Chip>
-                            ) : (
-                              <Chip tone="info">Upcoming</Chip>
-                            )}
+                            <div className="flex items-center justify-end gap-2">
+                              {isActive ? (
+                                <Chip tone="ok">Live Now</Chip>
+                              ) : isPast ? (
+                                <Chip tone="off">Completed</Chip>
+                              ) : (
+                                <Chip tone="info">Upcoming</Chip>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleOpenAttendance(sess)}
+                                title="View attendance records"
+                              >
+                                Attendance
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -645,6 +716,166 @@ export function ClassDetailPage() {
               </Button>
               <Button type="submit" disabled={sessionCreating}>
                 {sessionCreating ? 'Scheduling...' : 'Schedule Session'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+
+        {/* Attendance Modal (Phase 4) */}
+        <Modal
+          isOpen={isAttendanceModalOpen}
+          onClose={() => setIsAttendanceModalOpen(false)}
+          title={`Session Attendance – ${selectedSession ? new Date(selectedSession.starts_at).toLocaleDateString() : ''}`}
+        >
+          <div className="flex flex-col gap-4 max-h-[75vh] overflow-y-auto pr-1">
+            {selectedSession && (
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-indigo-500/10 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+                <div>
+                  <span className="text-slate-400">Window: </span>
+                  <strong>
+                    {new Date(selectedSession.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
+                    {new Date(selectedSession.ends_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">Grace: </span>
+                  <strong>{selectedSession.grace_minutes} min</strong>
+                </div>
+                {selectedSession.finalized_at && (
+                  <Chip tone="off">Finalized</Chip>
+                )}
+              </div>
+            )}
+
+            {attendanceError && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                {attendanceError}
+              </div>
+            )}
+
+            {attendanceLoading ? (
+              <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                <div className="w-6 h-6 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin" />
+                <span>Loading attendance records...</span>
+              </div>
+            ) : attendanceList.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-xs">
+                No attendance records for this session yet. Approved students joining via Zoom or Meet will appear here.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-indigo-500/10 text-slate-400 uppercase tracking-wider">
+                      <th className="py-2.5 px-2">Student</th>
+                      <th className="py-2.5 px-2">Status</th>
+                      <th className="py-2.5 px-2">Joined</th>
+                      <th className="py-2.5 px-2">Source</th>
+                      <th className="py-2.5 px-2">Flags</th>
+                      <th className="py-2.5 px-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-indigo-500/5">
+                    {attendanceList.map((rec) => {
+                      const statusTone = rec.status === 'present' ? 'ok' : rec.status === 'late' ? 'warn' : 'off';
+                      return (
+                        <tr key={rec.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-2.5 px-2">
+                            <div className="font-semibold text-white">{rec.student_name}</div>
+                            <div className="text-[11px] text-slate-400">{rec.student_email}</div>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <Chip tone={statusTone} className="capitalize">
+                              {rec.status}
+                            </Chip>
+                          </td>
+                          <td className="py-2.5 px-2 text-slate-300">
+                            {rec.joined_at
+                              ? new Date(rec.joined_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                              : '—'}
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                              {rec.source}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {rec.conflict && (
+                                <span
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                  title={JSON.stringify(rec.conflict)}
+                                >
+                                  Conflict
+                                </span>
+                              )}
+                              {rec.overridden_by && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                  Overridden
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleStartOverride(rec)}
+                              className="text-indigo-300 hover:text-white"
+                            >
+                              Override
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Modal>
+
+        {/* Override Modal (Phase 4) */}
+        <Modal
+          isOpen={isOverrideModalOpen}
+          onClose={() => setIsOverrideModalOpen(false)}
+          title={`Override Attendance – ${overrideRecord?.student_name ?? ''}`}
+        >
+          <form onSubmit={handleSaveOverride} className="flex flex-col gap-4">
+            {overrideError && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                {overrideError}
+              </div>
+            )}
+
+            <SelectField
+              label="New Attendance Status"
+              id="override-status"
+              value={overrideStatus}
+              onChange={(e) => setOverrideStatus(e.target.value as AttendanceStatus)}
+              options={[
+                { value: 'present', label: 'Present' },
+                { value: 'late', label: 'Late' },
+                { value: 'absent', label: 'Absent' },
+              ]}
+            />
+
+            <InputField
+              label="Reason for Override (Optional)"
+              id="override-reason"
+              type="text"
+              placeholder="e.g. Excused medical absence, technical issue"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+            />
+
+            <div className="flex items-center justify-end gap-3 mt-4 pt-3 border-t border-indigo-500/10">
+              <Button type="button" variant="ghost" onClick={() => setIsOverrideModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={overrideSaving}>
+                {overrideSaving ? 'Saving...' : 'Save Override'}
               </Button>
             </div>
           </form>

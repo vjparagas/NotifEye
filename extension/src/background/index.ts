@@ -4,12 +4,24 @@ import type {
   StudentScheduleItemDTO,
   UserDTO,
 } from '@notifeye/shared';
+import {
+  HEARTBEAT_TIMEOUT_MS,
+  matchMeetingToSchedule,
+  shouldHeartbeatTimeout,
+} from '../config/platforms';
 
 const API_BASE = typeof __API_URL__ !== 'undefined' ? __API_URL__ : 'http://localhost:4000';
 const IS_DEMO = typeof __DEMO_MODE__ !== 'undefined' ? __DEMO_MODE__ : false;
 
 const TICK_ALARM = 'notifeye_tick';
 const REFRESH_ALARM = 'notifeye_schedule_refresh';
+
+export interface ActiveMeetingState {
+  meetingId: string;
+  classId: string;
+  sessionId: string;
+  lastHeartbeatAt: number;
+}
 
 /**
  * Downloads the student's schedule from GET /me/schedule and caches it in chrome.storage.local.
@@ -40,12 +52,216 @@ export async function refreshSchedule(): Promise<StudentScheduleItemDTO[]> {
 }
 
 /**
+ * Flushes queued offline events to the backend POST /events.
+ */
+export async function flushEventQueue(): Promise<void> {
+  try {
+    const data = await chrome.storage.local.get(['notifeye_token', 'notifeye_offline_queue']);
+    const token = data.notifeye_token as string | undefined;
+    const queue = (data.notifeye_offline_queue as NormalizedEvent[] | undefined) ?? [];
+
+    if (!token || queue.length === 0) return;
+
+    const res = await fetch(`${API_BASE}/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ events: queue }),
+    });
+
+    if (res.ok) {
+      await chrome.storage.local.set({ notifeye_offline_queue: [] });
+    }
+  } catch {
+    // Retain in storage on network failure
+  }
+}
+
+/**
+ * Handles meeting heartbeat from content script.
+ * If meeting does not match scheduled session or is outside window: dropped in memory, sends nothing.
+ * If matches: records heartbeat and queues meeting_joined on initial join.
+ */
+export async function handleMeetingHeartbeat(
+  meetingId: string,
+  timestamp?: string,
+): Promise<{ matched: boolean; status: string }> {
+  try {
+    const data = await chrome.storage.local.get([
+      'notifeye_token',
+      'notifeye_user',
+      'notifeye_schedule',
+      'notifeye_active_meeting',
+      'notifeye_offline_queue',
+    ]);
+
+    const token = data.notifeye_token as string | undefined;
+    const user = data.notifeye_user as UserDTO | undefined;
+    const schedule = (data.notifeye_schedule as StudentScheduleItemDTO[] | undefined) ?? [];
+    const activeMeeting = (data.notifeye_active_meeting as ActiveMeetingState | undefined) ?? null;
+    const offlineQueue = (data.notifeye_offline_queue as NormalizedEvent[] | undefined) ?? [];
+
+    if (!token || !user) {
+      return { matched: false, status: 'unauthenticated' };
+    }
+
+    const eventTimeIso = timestamp ?? new Date().toISOString();
+    const eventTimeMs = new Date(eventTimeIso).getTime();
+
+    // Check if there is an active session right now matching this meeting_id
+    const matchingSession = matchMeetingToSchedule(meetingId, schedule, eventTimeMs);
+
+    // Mismatch or outside session window: DROP in memory and send NOTHING!
+    if (!matchingSession) {
+      return { matched: false, status: 'dropped_mismatch_or_out_of_window' };
+    }
+
+    const updatedActive: ActiveMeetingState = {
+      meetingId,
+      classId: matchingSession.class_id,
+      sessionId: matchingSession.id,
+      lastHeartbeatAt: Date.now(),
+    };
+
+    // If already joined to this session: just update heartbeat timestamp
+    if (
+      activeMeeting &&
+      activeMeeting.sessionId === matchingSession.id &&
+      activeMeeting.meetingId.toLowerCase() === meetingId.toLowerCase()
+    ) {
+      await chrome.storage.local.set({ notifeye_active_meeting: updatedActive });
+      return { matched: true, status: 'heartbeat_updated' };
+    }
+
+    // First time joining this meeting: queue meeting_joined event
+    const joinEvent: NormalizedEvent = {
+      user_id: user.id,
+      class_id: matchingSession.class_id,
+      session_id: matchingSession.id,
+      type: 'meeting_joined',
+      state: null,
+      timestamp: eventTimeIso,
+      source: 'extension',
+    };
+
+    const newQueue = [...offlineQueue, joinEvent].slice(-100);
+    await chrome.storage.local.set({
+      notifeye_active_meeting: updatedActive,
+      notifeye_offline_queue: newQueue,
+    });
+
+    await flushEventQueue();
+    return { matched: true, status: 'meeting_joined_queued' };
+  } catch (err) {
+    console.error('[NotifEye SW] handleMeetingHeartbeat error:', err);
+    return { matched: false, status: 'error' };
+  }
+}
+
+/**
+ * Handles pagehide message from content script.
+ * Emits meeting_left event and clears active meeting state.
+ */
+export async function handleMeetingPagehide(
+  meetingId: string,
+  timestamp?: string,
+): Promise<{ handled: boolean }> {
+  try {
+    const data = await chrome.storage.local.get([
+      'notifeye_token',
+      'notifeye_user',
+      'notifeye_active_meeting',
+      'notifeye_offline_queue',
+    ]);
+
+    const token = data.notifeye_token as string | undefined;
+    const user = data.notifeye_user as UserDTO | undefined;
+    const activeMeeting = (data.notifeye_active_meeting as ActiveMeetingState | undefined) ?? null;
+    const offlineQueue = (data.notifeye_offline_queue as NormalizedEvent[] | undefined) ?? [];
+
+    if (!token || !user || !activeMeeting) {
+      return { handled: false };
+    }
+
+    if (activeMeeting.meetingId.toLowerCase() !== meetingId.toLowerCase()) {
+      return { handled: false };
+    }
+
+    const leaveEvent: NormalizedEvent = {
+      user_id: user.id,
+      class_id: activeMeeting.classId,
+      session_id: activeMeeting.sessionId,
+      type: 'meeting_left',
+      state: null,
+      timestamp: timestamp ?? new Date().toISOString(),
+      source: 'extension',
+    };
+
+    const newQueue = [...offlineQueue, leaveEvent].slice(-100);
+    await chrome.storage.local.set({
+      notifeye_active_meeting: null,
+      notifeye_offline_queue: newQueue,
+    });
+
+    await flushEventQueue();
+    return { handled: true };
+  } catch (err) {
+    console.error('[NotifEye SW] handleMeetingPagehide error:', err);
+    return { handled: false };
+  }
+}
+
+/**
+ * Checks if meeting heartbeats have stopped longer than the grace window (50s).
+ * NEVER treats a port disconnect or service-worker restart as "left".
+ */
+export async function checkHeartbeatTimeout(): Promise<void> {
+  const data = await chrome.storage.local.get([
+    'notifeye_user',
+    'notifeye_active_meeting',
+    'notifeye_offline_queue',
+  ]);
+
+  const user = data.notifeye_user as UserDTO | undefined;
+  const activeMeeting = (data.notifeye_active_meeting as ActiveMeetingState | undefined) ?? null;
+  const offlineQueue = (data.notifeye_offline_queue as NormalizedEvent[] | undefined) ?? [];
+
+  if (!user || !activeMeeting) return;
+
+  const now = Date.now();
+  if (shouldHeartbeatTimeout(activeMeeting.lastHeartbeatAt, now, HEARTBEAT_TIMEOUT_MS)) {
+    // Heartbeats stopped longer than grace window -> emit meeting_left
+    const leaveEvent: NormalizedEvent = {
+      user_id: user.id,
+      class_id: activeMeeting.classId,
+      session_id: activeMeeting.sessionId,
+      type: 'meeting_left',
+      state: null,
+      timestamp: new Date(activeMeeting.lastHeartbeatAt + 20_000).toISOString(),
+      source: 'extension',
+    };
+
+    const newQueue = [...offlineQueue, leaveEvent].slice(-100);
+    await chrome.storage.local.set({
+      notifeye_active_meeting: null,
+      notifeye_offline_queue: newQueue,
+    });
+
+    await flushEventQueue();
+  }
+}
+
+/**
  * Periodic presence tick.
  * ONLY reports presence when current time is INSIDE a scheduled session window.
  * Outside any session window: sends nothing and marks status as "not_in_session".
  */
 export async function onTick(): Promise<void> {
   try {
+    await checkHeartbeatTimeout();
+
     const data = await chrome.storage.local.get([
       'notifeye_token',
       'notifeye_user',
@@ -161,6 +377,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'MEETING_HEARTBEAT') {
+    handleMeetingHeartbeat(msg.meetingId, msg.timestamp).then((res) => sendResponse(res));
+    return true;
+  }
+  if (msg?.type === 'MEETING_PAGEHIDE') {
+    handleMeetingPagehide(msg.meetingId, msg.timestamp).then((res) => sendResponse(res));
+    return true;
+  }
   if (msg?.type === 'REFRESH_SCHEDULE') {
     refreshSchedule().then((schedule) => sendResponse({ ok: true, schedule }));
     return true;

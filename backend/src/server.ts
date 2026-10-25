@@ -1,5 +1,6 @@
 import { createApp } from './app';
 import { config } from './config';
+import { startScheduler } from './modules/scheduler';
 
 const app = createApp();
 
@@ -9,4 +10,5 @@ const host = config.isProduction ? '0.0.0.0' : '127.0.0.1';
 
 app.listen(config.PORT, host, () => {
   console.log(`[notifeye] API listening on http://${host}:${config.PORT} (${config.NODE_ENV})`);
+  startScheduler();
 });

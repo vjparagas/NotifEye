@@ -79,6 +79,21 @@ export const api = {
     request<{ status: import('@notifeye/shared').StudentStatusDTO[] }>(`/classes/${classId}/status`),
   schedule: () =>
     request<{ schedule: import('@notifeye/shared').StudentScheduleItemDTO[] }>('/me/schedule'),
+
+  sessionAttendance: (sessionId: string) =>
+    request<{
+      session: import('@notifeye/shared').SessionDTO;
+      attendance: import('@notifeye/shared').AttendanceRecordDTO[];
+    }>(`/sessions/${sessionId}/attendance`),
+  overrideAttendance: (
+    attendanceId: string,
+    input: import('@notifeye/shared').OverrideAttendanceInput,
+  ) =>
+    request<{ attendance: import('@notifeye/shared').AttendanceRecordDTO }>(
+      `/attendance/${attendanceId}`,
+      'PATCH',
+      input,
+    ),
 };
 
 
