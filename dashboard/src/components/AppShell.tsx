@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useAuth } from '../auth';
 import { Button } from './ui';
+import { api } from '../api';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -10,6 +12,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     await logout();
     navigate('/login');
   };
+
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    const fetchAlerts = async () => {
+      try {
+        const { alerts } = await api.alerts();
+        if (mounted) {
+          setUnreadCount(alerts.filter((a) => !a.read_at).length);
+        }
+      } catch {
+        // ignore errors in background badge polling
+      }
+    };
+
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 20_000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [user]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -40,6 +66,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="text-sm font-medium px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
               >
                 My Classes
+              </Link>
+              <Link
+                to="/alerts"
+                className="relative text-sm font-medium px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                title="Alerts"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <span>Alerts</span>
+                {unreadCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-rose-500 text-white animate-pulse">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </Link>
             </nav>
           </div>

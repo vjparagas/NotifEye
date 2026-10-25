@@ -14,6 +14,7 @@ import {
   createSessionsAttendanceRouter,
   createAttendanceRouter,
 } from './modules/attendance/routes';
+import { alertsRouter } from './modules/alerts/routes';
 
 interface LimitOptions {
   limit: number;
@@ -97,6 +98,7 @@ export function createApp(options: AppOptions = {}): express.Express {
   app.use('/events', createEventsRouter());
   app.use('/sessions', createSessionsAttendanceRouter());
   app.use('/attendance', createAttendanceRouter());
+  app.use('/alerts', alertsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

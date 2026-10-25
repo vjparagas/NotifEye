@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './auth';
 import { LoginPage } from './pages/LoginPage';
 import { ClassesPage } from './pages/ClassesPage';
 import { ClassDetailPage } from './pages/ClassDetailPage';
+import { AlertsPage } from './pages/AlertsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -41,6 +42,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <ClassDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <AlertsPage />
               </ProtectedRoute>
             }
           />

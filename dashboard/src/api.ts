@@ -94,6 +94,15 @@ export const api = {
       'PATCH',
       input,
     ),
+
+  alerts: (classId?: string) =>
+    request<{ alerts: import('@notifeye/shared').AlertDTO[] }>(
+      classId ? `/alerts?class_id=${classId}` : '/alerts',
+    ),
+  markAlertRead: (alertId: string) =>
+    request<{ alert: import('@notifeye/shared').AlertDTO }>(`/alerts/${alertId}/read`, 'PATCH'),
+  markAllAlertsRead: (classId?: string) =>
+    request<{ count: number }>('/alerts/mark-all-read', 'POST', { class_id: classId }),
 };
 
 

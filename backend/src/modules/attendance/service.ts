@@ -10,6 +10,7 @@ import {
 import { pool } from '../../db';
 import { HttpError } from '../../shared/errors';
 import { requireProfessor } from '../../shared/access-control';
+import { recordAlert } from '../alerts/service';
 
 export async function evaluateSessionAttendance(
   sessionId: string,
@@ -57,6 +58,36 @@ export async function evaluateSessionAttendance(
        ON CONFLICT (session_id, user_id) DO NOTHING`,
       [sessionId, session.class_id],
     );
+
+    // Create an ABSENT alert for the professor of that class (once per session/student)
+    const { rows: absentStudents } = await clientOrPool.query<{
+      user_id: string;
+      student_name: string;
+      class_name: string;
+    }>(
+      `SELECT e.user_id, u.name AS student_name, c.name AS class_name
+         FROM enrollments e
+         JOIN users u ON u.id = e.user_id
+         JOIN classes c ON c.id = e.class_id
+         JOIN attendance_records ar ON ar.session_id = $1 AND ar.user_id = e.user_id
+        WHERE e.class_id = $2
+          AND e.role = 'student'
+          AND e.status = 'approved'
+          AND ar.status = 'absent'
+          AND ar.joined_at IS NULL`,
+      [sessionId, session.class_id],
+    );
+
+    for (const student of absentStudents) {
+      await recordAlert({
+        classId: session.class_id,
+        sessionId: session.id,
+        userId: student.user_id,
+        kind: 'absent',
+        message: `${student.student_name} has not joined "${student.class_name}" and the ${session.grace_minutes}-minute grace period has ended.`,
+        clientOrPool,
+      });
+    }
   }
 
   // 3. If session ended, finalize session
@@ -103,6 +134,10 @@ export async function processEventForAttendance(
   const existing = existingRows[0];
 
   if (event.type === 'meeting_joined') {
+    const startMs = session.starts_at.getTime();
+    const graceBoundaryMs = startMs + session.grace_minutes * 60 * 1000;
+    const eventTimeMs = new Date(event.timestamp).getTime();
+
     if (!existing) {
       // First time recording attendance for this user in this session
       const calc = calculateAttendanceStatus(sessionConfig, event.timestamp, null, false);
@@ -113,6 +148,18 @@ export async function processEventForAttendance(
          VALUES ($1, $2, $3, $4, $5, now(), now())`,
         [event.session_id, event.user_id, event.timestamp, initialStatus, event.source],
       );
+
+      if (initialStatus === 'late' || eventTimeMs > graceBoundaryMs) {
+        const minutesLate = Math.max(1, Math.round((eventTimeMs - startMs) / 60000));
+        await recordAlert({
+          classId: event.class_id,
+          sessionId: event.session_id!,
+          userId: event.user_id,
+          kind: 'late',
+          message: `Student joined late (${minutesLate} min after session start).`,
+          clientOrPool: client,
+        });
+      }
       return;
     }
 
@@ -149,6 +196,16 @@ export async function processEventForAttendance(
          VALUES ($1, NULL, 'absent', 'late', 'Late join after absent mark', now())`,
         [existing.id],
       );
+
+      const minutesLate = Math.max(1, Math.round((eventTimeMs - startMs) / 60000));
+      await recordAlert({
+        classId: event.class_id,
+        sessionId: event.session_id!,
+        userId: event.user_id,
+        kind: 'late',
+        message: `Student joined late (${minutesLate} min after session start).`,
+        clientOrPool: client,
+      });
     } else {
       await client.query(
         `UPDATE attendance_records
@@ -157,6 +214,18 @@ export async function processEventForAttendance(
           WHERE id = $2`,
         [event.timestamp, existing.id],
       );
+
+      if (existing.status !== 'present' && (calc.status === 'late' || eventTimeMs > graceBoundaryMs)) {
+        const minutesLate = Math.max(1, Math.round((eventTimeMs - startMs) / 60000));
+        await recordAlert({
+          classId: event.class_id,
+          sessionId: event.session_id!,
+          userId: event.user_id,
+          kind: 'late',
+          message: `Student joined late (${minutesLate} min after session start).`,
+          clientOrPool: client,
+        });
+      }
     }
   } else if (event.type === 'meeting_left') {
     if (existing) {
