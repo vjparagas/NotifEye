@@ -255,7 +255,7 @@ export function App() {
                   type="password"
                   className="input-text"
                   required
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -390,7 +390,7 @@ export function App() {
                       <div style={{ fontSize: '12px', fontWeight: 600 }}>{c.name}</div>
                       <div className="muted small" style={{ margin: 0 }}>
                         {c.platform === 'zoom' ? 'Zoom Web' : 'Google Meet'}
-                        {c.section ? ` Â· Sec: ${c.section}` : ''}
+                        {c.section ? ` · Sec: ${c.section}` : ''}
                       </div>
                     </div>
                     <span
@@ -409,7 +409,7 @@ export function App() {
       )}
 
       <footer className="muted small" style={{ textAlign: 'center', marginTop: '4px' }}>
-        v0.2 Â· Phase 2 verified
+        v0.2 · Phase 2 verified
       </footer>
     </main>
   );
