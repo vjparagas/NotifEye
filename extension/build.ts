@@ -76,7 +76,11 @@ const manifest = {
   ],
 };
 
-const define = { __API_URL__: JSON.stringify(apiUrl.origin) };
+const isDemo = process.env.DEMO_MODE === 'true';
+const define = {
+  __API_URL__: JSON.stringify(apiUrl.origin),
+  __DEMO_MODE__: JSON.stringify(isDemo),
+};
 
 const common: InlineConfig = {
   configFile: false,

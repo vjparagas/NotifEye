@@ -70,7 +70,17 @@ export const api = {
   enrollments: (id: string) => request<{ enrollments: EnrollmentDTO[] }>(`/classes/${id}/enrollments`),
   setEnrollmentStatus: (classId: string, enrollmentId: string, status: 'approved' | 'removed') =>
     request<{ enrollment: EnrollmentDTO }>(`/classes/${classId}/enrollments/${enrollmentId}`, 'PATCH', { status }),
+
+  sessions: (classId: string) =>
+    request<{ sessions: import('@notifeye/shared').SessionDTO[] }>(`/classes/${classId}/sessions`),
+  createSession: (classId: string, input: import('@notifeye/shared').CreateSessionInput) =>
+    request<{ session: import('@notifeye/shared').SessionDTO }>(`/classes/${classId}/sessions`, 'POST', input),
+  status: (classId: string) =>
+    request<{ status: import('@notifeye/shared').StudentStatusDTO[] }>(`/classes/${classId}/status`),
+  schedule: () =>
+    request<{ schedule: import('@notifeye/shared').StudentScheduleItemDTO[] }>('/me/schedule'),
 };
+
 
 /** Turns an API error into one friendly sentence (field issues first). */
 export function errorMessage(err: unknown): string {

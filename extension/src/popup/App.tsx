@@ -1,5 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
-import type { MyClassDTO, UserDTO } from '@notifeye/shared';
+import React, { useEffect, useState } from 'react';
+import type { MyClassDTO, StudentScheduleItemDTO, UserDTO } from '@notifeye/shared';
 import { extensionApi, ExtensionApiError } from './api';
 import { getStoredAuth, setStoredAuth } from './storage';
 
@@ -24,10 +24,22 @@ export function App() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [activeSession, setActiveSession] = useState<StudentScheduleItemDTO | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<string>('not_in_session');
 
   // Initialize
   useEffect(() => {
     let mounted = true;
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['notifeye_active_session', 'notifeye_current_status'], (res) => {
+        if (!mounted) return;
+        setActiveSession((res.notifeye_active_session as StudentScheduleItemDTO) || null);
+        setCurrentStatus((res.notifeye_current_status as string) || 'not_in_session');
+      });
+      chrome.runtime?.sendMessage?.({ type: 'REFRESH_SCHEDULE' });
+    }
+
     getStoredAuth().then(async ({ token: storedToken, user: storedUser }) => {
       if (!mounted) return;
       if (storedToken && storedUser) {
@@ -53,6 +65,7 @@ export function App() {
       mounted = false;
     };
   }, []);
+
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,12 +191,25 @@ export function App() {
 
       {/* Honest Status Card */}
       <section className="card" id="status-card">
-        <div className="row">
-          <span className="dot dot-off" aria-hidden="true" />
-          <strong style={{ fontSize: '13px' }}>Monitoring inactive</strong>
-        </div>
-        <p className="muted">Not in session. Nothing is being sent.</p>
+        {activeSession ? (
+          <>
+            <div className="row">
+              <span className="dot dot-on" aria-hidden="true" />
+              <strong style={{ fontSize: '13px' }}>Monitoring active</strong>
+            </div>
+            <p className="muted">In session: {activeSession.class_name} ({currentStatus})</p>
+          </>
+        ) : (
+          <>
+            <div className="row">
+              <span className="dot dot-off" aria-hidden="true" />
+              <strong style={{ fontSize: '13px' }}>Monitoring inactive</strong>
+            </div>
+            <p className="muted">Not in session. Nothing is being sent.</p>
+          </>
+        )}
       </section>
+
 
       {/* Unauthenticated View */}
       {!user ? (
