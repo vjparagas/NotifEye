@@ -8,7 +8,7 @@ Scope reminder: platforms are **Zoom and Google Meet only**. MS Teams is out of 
 
 | Phase | Status |
 |---|---|
-| 1 | **Complete, awaiting owner approval.** Database: Docker Compose (Postgres 16 + Mailpit, both published on `127.0.0.1` only), migration `1761317000000_initial-schema`, 11 app tables, `notifeye` and `notifeye_test` databases, `npm run db:check` passes (re-verified after the loopback rebind). Monorepo: npm workspaces `/extension`, `/dashboard` (placeholder), `/backend` (health-check shell only), `/shared`, `/docs`. `.env.example` and `.gitignore` (excludes `.env`) done. Empty MV3 extension (Vite + TS + React popup) builds and loads in Chromium with only `idle`, `alarms`, `storage`, `notifications`; the localhost host permission is added only by `--allow-localhost` (`npm run build`), and `npm run build:prod` is HTTPS-only. Screenshots in `docs/screenshots/`. Dev API binds to `127.0.0.1` outside production. **Open for owner decision:** schema naming deviations from section 4 (`enrollments.created_at` vs `joined_at`, `attendance_audit.created_at` vs `at`, event dedupe index also includes `class_id`). |
+| 1 | **Complete, awaiting owner approval.** Database: Docker Compose (Postgres 16 + Mailpit, both published on `127.0.0.1` only), migration `1761317000000_initial-schema`, 11 app tables, `notifeye` and `notifeye_test` databases, `npm run db:check` passes (re-verified after the loopback rebind). Monorepo: npm workspaces `/extension`, `/dashboard` (placeholder), `/backend` (health-check shell only), `/shared`, `/docs`. `.env.example` and `.gitignore` (excludes `.env`) done. Empty MV3 extension (Vite + TS + React popup) builds and loads in Chromium with only `idle`, `alarms`, `storage`, `notifications`; the localhost host permission is added only by `--allow-localhost` (`npm run build`), and `npm run build:prod` is HTTPS-only. Screenshots in `docs/screenshots/`. Dev API binds to `127.0.0.1` outside production. **Schema naming decision (owner, resolved):** keep the migration's `created_at` columns and the `class_id` in the event dedupe key; section 4 now mirrors the real schema (see section 14). Smoke tests passed: `docker compose up`, migrations, psql table check, `db:check`, backend `/health` on `127.0.0.1` and `localhost`, extension build and load. Phase 2 is blocked until the owner approves. |
 | 2-8 | Not started. Do not start Phase 2 until Phase 1 is complete and approved. |
 
 Dev note: PowerShell blocks `npm.ps1` on this machine, so use `npm.cmd` (or `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).
@@ -93,23 +93,25 @@ type NormalizedEvent = {
   source: 'extension' | 'zoom_api' | 'meet_api' | 'csv';
 }
 ```
-Every connector outputs this. Downstream services (status, attendance, rules) only see `NormalizedEvent`. Events are deduplicated by `(user_id, type, timestamp, source)`. The server clamps absurd client clocks (future timestamps are rejected or capped).
+Every connector outputs this. Downstream services (status, attendance, rules) only see `NormalizedEvent`. Events are deduplicated by `(user_id, class_id, type, timestamp, source)` (unique index `activity_events_dedupe_idx`). The server clamps absurd client clocks (future timestamps are rejected or capped).
 
 ## 4. Database schema (PostgreSQL, all timestamps `timestamptz` UTC)
 
-| Table | Key columns |
+The source of truth is `backend/migrations/1761317000000_initial-schema.sql`. This table mirrors it. Every table also has a `created_at` unless noted.
+
+| Table | Key columns and constraints |
 |-------|-------------|
-| `users` | id, email (unique), password_hash (nullable for Google), google_sub, name, **consent_at**, consent_version, created_at |
-| `classes` | id, name, section, platform (`zoom`\|`meet`), class_code (unique), owner_id, discord_webhook_url (owner-only, never logged), created_at |
-| `enrollments` | id, user_id, class_id, **role** (`professor`\|`student`), status (`pending`\|`approved`\|`removed`), **consent_at** (class-join consent), joined_at; unique (user_id, class_id) |
-| `class_sessions` | id, class_id, starts_at, ends_at, meeting_link, meeting_id (normalized), grace_minutes, summary_sent_at |
-| `attendance_records` | id, session_id, user_id, joined_at, left_at, status (`present`\|`late`\|`absent`), source, **overridden_by**, overridden_at, conflict (jsonb nullable), unique (session_id, user_id) |
-| `activity_events` | id, user_id, class_id, session_id, type, state, timestamp, source, received_at; index (class_id, timestamp), (user_id, timestamp) |
-| `extension_installs` | id, user_id, install_id, browser, version, first_seen, last_seen |
-| `alert_rules` | id, class_id, kind, enabled, threshold, channels (email/dashboard/discord) |
-| `alerts` | id, class_id, session_id, user_id (subject), kind, message, channels_sent, created_at, read_at; unique key per (session, user, kind) to prevent duplicates |
-| `import_aliases` | id, class_id, alias (name/email from CSV), user_id, created_by |
-| `attendance_audit` | id, attendance_id, actor_id, old_status, new_status, reason, at. Not in your list. This is the "logged override" store, so I'm adding it and need your OK. |
+| `users` | id, email (unique on `lower(email)`), password_hash (nullable for Google-only accounts), google_sub (unique, nullable), name, **consent_at**, consent_version, created_at. CHECK: password_hash or google_sub must be present |
+| `classes` | id, name, section, platform (`zoom`\|`meet`), class_code (unique), owner_id (FK, ON DELETE RESTRICT), discord_webhook_url (owner-only, never logged), created_at |
+| `enrollments` | id, user_id, class_id, **role** (`professor`\|`student`), status (`pending`\|`approved`\|`removed`, default `pending`), **consent_at** (class-join consent), created_at; unique (user_id, class_id); index (class_id, role, status). The join time is `created_at` (there is no `joined_at`) |
+| `class_sessions` | id, class_id, starts_at, ends_at (CHECK `ends_at > starts_at`), meeting_link, meeting_id (normalized), grace_minutes (default 10, CHECK >= 0), summary_sent_at, finalized_at, created_at |
+| `attendance_records` | id, session_id, user_id, joined_at, left_at, status (`present`\|`late`\|`absent`), source (`extension`\|`zoom_api`\|`meet_api`\|`csv`\|`manual`), **overridden_by**, overridden_at, conflict (jsonb nullable), created_at, updated_at; unique (session_id, user_id) |
+| `activity_events` | id (bigserial), user_id, class_id, session_id (nullable), type, state, timestamp, source (`extension`\|`zoom_api`\|`meet_api`\|`csv`), received_at; CHECK presence events have a state; unique dedupe index (user_id, class_id, type, timestamp, source); indexes (class_id, timestamp DESC), (user_id, timestamp DESC), (timestamp) for the retention sweep |
+| `extension_installs` | id, user_id, install_id, browser, version, first_seen, last_seen; unique (user_id, install_id) |
+| `alert_rules` | id, class_id, kind (`absent`\|`late`\|`idle`\|`repeated_absence`\|`left_early`\|`class_reminder`), enabled, threshold, channels (text[] of `email`/`dashboard`/`discord`, default `dashboard`); unique (class_id, kind) |
+| `alerts` | id, class_id, session_id, user_id (subject), kind, message, channels_sent, created_at, read_at; unique (session_id, user_id, kind) where session_id is not null, to prevent duplicates |
+| `import_aliases` | id, class_id, alias (name/email from CSV), user_id, created_by, created_at; unique (class_id, `lower(alias)`) |
+| `attendance_audit` | id, attendance_id, actor_id (NULL = system, e.g. an automatic Absent to Late flip), old_status, new_status, reason, created_at (there is no `at` column). The "logged override" store, approved by the owner |
 
 ## 5. Rules
 
@@ -212,3 +214,31 @@ MS Teams (no code, URL patterns, or events), mobile, SMS, desktop apps, Firefox/
 - MV3 service workers sleep. State lives in `chrome.storage` and `chrome.alarms` is the only timer.
 - Real-meeting verification needs your manual smoke test (Q5).
 - The Google OAuth client ID has to come from you for real Google sign-in. I'll wire it through env vars and stub it in tests.
+
+## 14. Deviations from spec
+`docs/NotifEye_Design.md` is the original spec. Where it conflicts with this plan, **this plan wins**. The owner approved these deviations:
+
+| # | Topic | Spec says | This plan / implementation |
+|---|-------|-----------|----------------------------|
+| 1 | Extension login | Email/password **or Google sign-in** through the identity API (F1, sections 6, 7, 10). | **Email/password only** in the extension. Google sign-in exists only on the dashboard (professors). No `identity` permission and no `externally_connectable` hand-off. |
+| 2 | Status precedence | "In Class" overrides the other statuses (section 5 table). | **Offline overrides a stale In Class.** If the extension has not reported for more than 3 minutes, the status is Offline even if a meeting tab was last seen open. See section 5. |
+| 3 | Chat alerts | One chat webhook, "Discord or Telegram". | **Discord only** (`classes.discord_webhook_url`). No Telegram. |
+| 4 | `GET /alerts` | Used by both Dashboard and Extension. | **Professors only**, for their own classes. Students get reminders through `chrome.notifications` and see their own data via `GET /me/data`. |
+| 5 | Schema naming | Section 9 lists simplified columns. | The real migration is the source of truth (section 4). Differences below. |
+
+### Schema naming differences
+**Plan vs real schema** (owner decision: keep the migration as it is):
+- `enrollments`: the join time is `created_at`. There is no `joined_at`.
+- `attendance_audit`: the timestamp is `created_at`. There is no `at` column.
+- `activity_events` dedupe key is `(user_id, class_id, type, timestamp, source)`, which includes `class_id`. Section 3 was updated to say so.
+
+**Spec vs real schema:**
+- `users`: spec has `auth_provider`. Real schema has `google_sub` (unique, nullable) and a nullable `password_hash`, with a CHECK that at least one exists. It also has `consent_version`.
+- `enrollments`: real schema adds `consent_at` (class-join consent) and the `pending`/`approved`/`removed` status.
+- `extension_installs`: spec has `last_seen_at`. Real schema has `install_id`, `browser`, `version`, `first_seen` and `last_seen`.
+- `alerts`: spec has `rule, channel, sent_at`. Real schema has `kind`, `message`, `channels_sent` (text[]), `created_at` and `read_at`.
+- `alert_rules`: spec has `rule`. Real schema has `kind` (one of six values), `channels` (text[]) and a unique key on `(class_id, kind)`.
+- `import_aliases`: spec has `csv_name`. Real schema has `alias` with a case-insensitive unique index per class, plus `created_by`.
+- `class_sessions`: real schema adds `meeting_id`, `summary_sent_at` and `finalized_at`.
+- `attendance_records`: real schema adds `overridden_at`, `conflict` and `updated_at`, and allows source `manual`.
+- `attendance_audit` is not in the spec. It is an owner-approved addition.
