@@ -1,6 +1,7 @@
 import type { NormalizedEvent } from '@notifeye/shared';
 import { pool } from '../../db';
 import { HttpError } from '../../shared/errors';
+import { processEventForAttendance } from '../attendance/service';
 
 export interface IngestResult {
   received: number;
@@ -54,8 +55,13 @@ export async function ingestEvents(userId: string, events: NormalizedEvent[]): P
 
       // 3. For each event, check session window and insert
       for (const ev of classEvents) {
-        const { rows: sessionRows } = await client.query<{ id: string }>(
-          `SELECT id FROM class_sessions
+        const { rows: sessionRows } = await client.query<{
+          id: string;
+          starts_at: Date;
+          ends_at: Date;
+          grace_minutes: number;
+        }>(
+          `SELECT id, starts_at, ends_at, grace_minutes FROM class_sessions
             WHERE class_id = $1
               AND starts_at <= $2
               AND ends_at >= $2
@@ -67,7 +73,8 @@ export async function ingestEvents(userId: string, events: NormalizedEvent[]): P
           throw new HttpError(400, 'out_of_session', 'Event timestamp is outside any active session window.');
         }
 
-        const sessionId = sessionRows[0].id;
+        const session = sessionRows[0];
+        const sessionId = session.id;
         const res = await client.query(
           `INSERT INTO activity_events (user_id, class_id, session_id, type, state, timestamp, source, received_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, now())
@@ -77,6 +84,17 @@ export async function ingestEvents(userId: string, events: NormalizedEvent[]): P
         );
         if ((res.rowCount ?? 0) > 0) {
           insertedCount++;
+          if (ev.type === 'meeting_joined' || ev.type === 'meeting_left') {
+            await processEventForAttendance(
+              client,
+              { ...ev, session_id: sessionId },
+              {
+                starts_at: session.starts_at,
+                ends_at: session.ends_at,
+                grace_minutes: session.grace_minutes,
+              },
+            );
+          }
         }
       }
     }

@@ -10,6 +10,10 @@ import { createGoogleVerifier, type GoogleVerifier } from './modules/auth/google
 import { createAuthRouter } from './modules/auth/routes';
 import { createClassesRouter } from './modules/classes/routes';
 import { createEventsRouter } from './modules/events/routes';
+import {
+  createSessionsAttendanceRouter,
+  createAttendanceRouter,
+} from './modules/attendance/routes';
 
 interface LimitOptions {
   limit: number;
@@ -91,6 +95,8 @@ export function createApp(options: AppOptions = {}): express.Express {
   app.use(createAuthRouter({ googleVerifier, authLimiter }));
   app.use('/classes', createClassesRouter({ joinLimiter }));
   app.use('/events', createEventsRouter());
+  app.use('/sessions', createSessionsAttendanceRouter());
+  app.use('/attendance', createAttendanceRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);
