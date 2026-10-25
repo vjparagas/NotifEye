@@ -3,3 +3,4 @@ export * from './auth';
 export * from './classes';
 export * from './sessions';
 export * from './status';
+export * from './attendance';
