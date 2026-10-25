@@ -9,6 +9,7 @@ import {
   matchMeetingToSchedule,
   shouldHeartbeatTimeout,
 } from '../config/platforms';
+import { REMINDER_ALARM_PREFIX, scheduleReminders } from '../reminders';
 
 const API_BASE = typeof __API_URL__ !== 'undefined' ? __API_URL__ : 'http://localhost:4000';
 const IS_DEMO = typeof __DEMO_MODE__ !== 'undefined' ? __DEMO_MODE__ : false;
@@ -43,6 +44,7 @@ export async function refreshSchedule(): Promise<StudentScheduleItemDTO[]> {
       const body = (await res.json()) as { schedule: StudentScheduleItemDTO[] };
       const schedule = body.schedule ?? [];
       await chrome.storage.local.set({ notifeye_schedule: schedule });
+      await scheduleReminders(schedule);
       return schedule;
     }
   } catch (err) {
@@ -368,11 +370,24 @@ chrome.runtime.onStartup.addListener(() => {
   refreshSchedule().then(() => onTick());
 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === TICK_ALARM) {
     onTick();
   } else if (alarm.name === REFRESH_ALARM) {
     refreshSchedule();
+  } else if (alarm.name.startsWith(REMINDER_ALARM_PREFIX)) {
+    const sessionId = alarm.name.slice(REMINDER_ALARM_PREFIX.length);
+    const data = await chrome.storage.local.get(['notifeye_schedule']);
+    const schedule = (data.notifeye_schedule as StudentScheduleItemDTO[]) || [];
+    const session = schedule.find((s) => s.id === sessionId);
+    if (session) {
+      chrome.notifications?.create(`reminder_${sessionId}`, {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'NotifEye Class Reminder',
+        message: `${session.class_name} starts in 10 minutes`,
+      });
+    }
   }
 });
 

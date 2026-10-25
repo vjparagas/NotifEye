@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { MyClassDTO, StudentScheduleItemDTO, UserDTO } from '@notifeye/shared';
+import type { MyClassDTO, StudentAttendanceDTO, StudentScheduleItemDTO, UserDTO } from '@notifeye/shared';
 import { extensionApi, ExtensionApiError } from './api';
 import { getStoredAuth, setStoredAuth } from './storage';
 
@@ -28,6 +28,7 @@ export function App() {
   const [currentStatus, setCurrentStatus] = useState<string>('not_in_session');
   const [downloadingData, setDownloadingData] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<StudentAttendanceDTO[]>([]);
 
   // Initialize
   useEffect(() => {
@@ -50,6 +51,8 @@ export function App() {
         try {
           const res = await extensionApi.myClasses(storedToken);
           if (mounted) setClasses(res.classes);
+          const attRes = await extensionApi.myAttendance(storedToken);
+          if (mounted) setAttendance(attRes.attendance);
         } catch (err) {
           if (err instanceof ExtensionApiError && err.status === 401) {
             await setStoredAuth(null, null);
@@ -81,9 +84,11 @@ export function App() {
       setToken(res.token);
       setUser(res.user);
 
-      // Fetch enrolled classes
+      // Fetch enrolled classes and attendance
       const classRes = await extensionApi.myClasses(res.token);
       setClasses(classRes.classes);
+      const attRes = await extensionApi.myAttendance(res.token).catch(() => null);
+      if (attRes) setAttendance(attRes.attendance);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Sign-in failed.');
     } finally {
@@ -110,6 +115,8 @@ export function App() {
 
       const classRes = await extensionApi.myClasses(res.token);
       setClasses(classRes.classes);
+      const attRes = await extensionApi.myAttendance(res.token).catch(() => null);
+      if (attRes) setAttendance(attRes.attendance);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Registration failed.');
     } finally {
@@ -122,6 +129,7 @@ export function App() {
     setToken(null);
     setUser(null);
     setClasses([]);
+    setAttendance([]);
     setClassCode('');
     setJoinConsent(false);
     setJoinError(null);
@@ -439,6 +447,39 @@ export function App() {
                       }`}
                     >
                       {c.status === 'approved' ? 'Enrolled' : c.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* My Attendance */}
+          <section className="card">
+            <strong style={{ fontSize: '12px', display: 'block', marginBottom: '6px' }}>My Attendance</strong>
+            {attendance.length === 0 ? (
+              <p className="muted small">No attendance records yet.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '140px', overflowY: 'auto' }}>
+                {attendance.map((a) => (
+                  <div key={a.id} className="class-item" style={{ padding: '4px 0' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 600 }}>{a.class_name}</div>
+                      <div className="muted small" style={{ margin: 0, fontSize: '10px' }}>
+                        {new Date(a.starts_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
+                        {new Date(a.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    <span
+                      className={`chip ${
+                        a.status === 'present'
+                          ? 'chip-ok'
+                          : a.status === 'late'
+                            ? 'chip-warn'
+                            : 'chip-danger'
+                      }`}
+                    >
+                      {a.status === 'present' ? 'Present' : a.status === 'late' ? 'Late' : 'Absent'}
                     </span>
                   </div>
                 ))}

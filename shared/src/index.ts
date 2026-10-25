@@ -6,3 +6,4 @@ export * from './status';
 export * from './attendance';
 export * from './alerts';
 export * from './privacy';
+export * from './reminders';

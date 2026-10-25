@@ -6,6 +6,7 @@ import {
   type NormalizedEvent,
   type OverrideAttendanceInput,
   type SessionDTO,
+  type StudentAttendanceDTO,
 } from '@notifeye/shared';
 import { pool } from '../../db';
 import { HttpError } from '../../shared/errors';
@@ -390,3 +391,29 @@ export async function getAttendanceAudit(
 
   return rows;
 }
+
+export async function getMyAttendance(userId: string): Promise<StudentAttendanceDTO[]> {
+  const { rows } = await pool.query<StudentAttendanceDTO>(
+    `SELECT ar.id,
+            ar.session_id,
+            cs.class_id,
+            c.name AS class_name,
+            cs.starts_at,
+            cs.ends_at,
+            ar.status,
+            ar.joined_at,
+            ar.left_at,
+            ar.source,
+            ar.created_at
+       FROM attendance_records ar
+       JOIN class_sessions cs ON cs.id = ar.session_id
+       JOIN classes c ON c.id = cs.class_id
+      WHERE ar.user_id = $1
+      ORDER BY cs.starts_at DESC, ar.created_at DESC
+      LIMIT 20`,
+    [userId],
+  );
+
+  return rows;
+}
+

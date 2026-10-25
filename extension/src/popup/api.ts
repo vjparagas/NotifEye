@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   ClassDetailDTO,
   MyClassDTO,
+  StudentAttendanceDTO,
   UserDataExportDTO,
   UserDTO,
 } from '@notifeye/shared';
@@ -66,4 +67,7 @@ export const extensionApi = {
 
   myData: (token: string) =>
     request<{ data: UserDataExportDTO }>('/me/data', 'GET', undefined, token),
+
+  myAttendance: (token: string) =>
+    request<{ attendance: StudentAttendanceDTO[] }>('/me/attendance', 'GET', undefined, token),
 };

@@ -269,6 +269,12 @@ body {
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
+.chip-danger {
+  color: var(--danger);
+  background: rgba(251, 113, 133, 0.12);
+  border: 1px solid rgba(251, 113, 133, 0.3);
+}
+
 .chip-off {
   color: var(--off);
   background: rgba(107, 115, 145, 0.15);

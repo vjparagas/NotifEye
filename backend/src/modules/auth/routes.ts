@@ -159,6 +159,16 @@ export function createAuthRouter({ googleVerifier, authLimiter }: Deps): Router 
     }
   });
 
+  router.get('/me/attendance', authenticate, async (req, res, next) => {
+    try {
+      const { getMyAttendance } = await import('../attendance/service');
+      const attendance = await getMyAttendance(requireAuth(req).user.id);
+      res.json({ attendance });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 

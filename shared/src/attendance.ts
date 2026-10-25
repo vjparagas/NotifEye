@@ -20,6 +20,20 @@ export interface AttendanceRecordDTO {
   updated_at: string;
 }
 
+export interface StudentAttendanceDTO {
+  id: string;
+  session_id: string;
+  class_id: string;
+  class_name: string;
+  starts_at: string;
+  ends_at: string;
+  status: AttendanceStatus;
+  joined_at: string | null;
+  left_at: string | null;
+  source: string;
+  created_at: string;
+}
+
 export interface AttendanceAuditDTO {
   id: string;
   attendance_id: string;
