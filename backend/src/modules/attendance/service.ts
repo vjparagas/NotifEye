@@ -252,7 +252,6 @@ export async function processEventForAttendance(
 export async function getSessionAttendance(
   userId: string,
   sessionId: string,
-  now: Date = new Date(),
 ): Promise<{ session: SessionDTO; attendance: AttendanceRecordDTO[] }> {
   // 1. Fetch session
   const { rows: sessionRows } = await pool.query<SessionDTO>(
@@ -271,8 +270,7 @@ export async function getSessionAttendance(
   // 2. Ensure user is professor of that class
   await requireProfessor(userId, session.class_id);
 
-  // 3. Run attendance evaluation
-  await evaluateSessionAttendance(sessionId, pool, now);
+  // 3. Fetch attendance records with student names and emails
 
   // 4. Fetch attendance records with student names and emails
   const { rows: attendance } = await pool.query<AttendanceRecordDTO>(
