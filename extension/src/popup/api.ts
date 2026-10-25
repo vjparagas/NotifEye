@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   ClassDetailDTO,
   MyClassDTO,
+  UserDataExportDTO,
   UserDTO,
 } from '@notifeye/shared';
 
@@ -62,4 +63,7 @@ export const extensionApi = {
 
   joinClass: (token: string, class_code: string, consent: boolean) =>
     request<{ class: ClassDetailDTO }>('/classes/join', 'POST', { class_code, consent }, token),
+
+  myData: (token: string) =>
+    request<{ data: UserDataExportDTO }>('/me/data', 'GET', undefined, token),
 };

@@ -26,6 +26,8 @@ export function App() {
   const [joining, setJoining] = useState(false);
   const [activeSession, setActiveSession] = useState<StudentScheduleItemDTO | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>('not_in_session');
+  const [downloadingData, setDownloadingData] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   // Initialize
   useEffect(() => {
@@ -124,6 +126,7 @@ export function App() {
     setJoinConsent(false);
     setJoinError(null);
     setJoinSuccess(null);
+    setDataError(null);
   };
 
   const handleJoinClass = async (e: React.FormEvent) => {
@@ -155,6 +158,29 @@ export function App() {
       }
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleDownloadData = async () => {
+    if (!token) return;
+    setDataError(null);
+    setDownloadingData(true);
+    try {
+      const res = await extensionApi.myData(token);
+      const jsonStr = JSON.stringify(res.data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'notifeye-my-data.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setDataError(err instanceof Error ? err.message : 'Failed to export data.');
+    } finally {
+      setDownloadingData(false);
     }
   };
 
@@ -333,8 +359,22 @@ export function App() {
           {/* User profile bar */}
           <div className="space-between" style={{ padding: '0 4px', fontSize: '11px', color: 'var(--muted)' }}>
             <span>Signed in as <strong style={{ color: 'var(--text)' }}>{user.name}</strong></span>
-            <span>{user.email}</span>
+            <button
+              type="button"
+              className="btn-text"
+              onClick={handleDownloadData}
+              disabled={downloadingData}
+              style={{
+                color: 'var(--accent)',
+                cursor: downloadingData ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                padding: '2px 6px',
+              }}
+            >
+              {downloadingData ? 'Downloading...' : 'My data'}
+            </button>
           </div>
+          {dataError && <div className="error-banner">{dataError}</div>}
 
           {/* Join class card */}
           <section className="card">
