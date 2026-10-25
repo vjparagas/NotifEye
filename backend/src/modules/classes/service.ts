@@ -164,3 +164,46 @@ export async function updateStudentEnrollment(
   const all = await listEnrollments(classId);
   return all.find((e) => e.id === enrollmentId)!;
 }
+
+export async function createSession(
+  userId: string,
+  classId: string,
+  input: import('@notifeye/shared').CreateSessionInput,
+): Promise<import('@notifeye/shared').SessionDTO> {
+  const meetingId = (await import('@notifeye/shared')).extractMeetingId(input.meeting_link);
+  const { rows } = await pool.query<import('@notifeye/shared').SessionDTO>(
+    `INSERT INTO class_sessions (class_id, starts_at, ends_at, meeting_link, meeting_id, grace_minutes)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, class_id, starts_at, ends_at, meeting_link, meeting_id, grace_minutes, summary_sent_at, finalized_at, created_at`,
+    [classId, input.starts_at, input.ends_at, input.meeting_link, meetingId, input.grace_minutes],
+  );
+  return rows[0]!;
+}
+
+export async function listSessions(classId: string): Promise<import('@notifeye/shared').SessionDTO[]> {
+  const { rows } = await pool.query<import('@notifeye/shared').SessionDTO>(
+    `SELECT id, class_id, starts_at, ends_at, meeting_link, meeting_id, grace_minutes, summary_sent_at, finalized_at, created_at
+       FROM class_sessions
+      WHERE class_id = $1
+      ORDER BY starts_at ASC`,
+    [classId],
+  );
+  return rows;
+}
+
+export async function getStudentSchedule(
+  userId: string,
+): Promise<import('@notifeye/shared').StudentScheduleItemDTO[]> {
+  const { rows } = await pool.query<import('@notifeye/shared').StudentScheduleItemDTO>(
+    `SELECT s.id, s.class_id, c.name AS class_name, c.section, c.platform,
+            s.starts_at, s.ends_at, s.meeting_link, s.meeting_id, s.grace_minutes
+       FROM class_sessions s
+       JOIN classes c ON c.id = s.class_id
+       JOIN enrollments e ON e.class_id = c.id
+      WHERE e.user_id = $1 AND e.status = 'approved'
+      ORDER BY s.starts_at ASC`,
+    [userId],
+  );
+  return rows;
+}
+

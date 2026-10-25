@@ -143,5 +143,12 @@ export function createAuthRouter({ googleVerifier, authLimiter }: Deps): Router 
     res.json({ user: requireAuth(req).user });
   });
 
+  router.get('/me/schedule', authenticate, async (req, res) => {
+    const { getStudentSchedule } = await import('../classes/service');
+    const schedule = await getStudentSchedule(requireAuth(req).user.id);
+    res.json({ schedule });
+  });
+
   return router;
 }
+

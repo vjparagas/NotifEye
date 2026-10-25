@@ -82,6 +82,7 @@ export type ApiErrorCode =
   | 'rate_limited'
   | 'google_sign_in_disabled'
   | 'google_token_invalid'
+  | 'out_of_session'
   | 'internal_error';
 
 export interface ApiError {

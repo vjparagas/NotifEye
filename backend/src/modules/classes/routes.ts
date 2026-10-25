@@ -1,16 +1,19 @@
 import { Router, type RequestHandler } from 'express';
-import { createClassSchema, joinClassSchema, updateEnrollmentSchema } from '@notifeye/shared';
+import { createClassSchema, createSessionSchema, joinClassSchema, updateEnrollmentSchema } from '@notifeye/shared';
 import { HttpError, parse } from '../../shared/errors';
 import { parseId, requireMember, requireProfessor } from '../../shared/access-control';
 import { authenticate, requireAuth } from '../auth/middleware';
 import {
   createClass,
+  createSession,
   getClassDetail,
   joinClass,
   listEnrollments,
   listMyClasses,
+  listSessions,
   updateStudentEnrollment,
 } from './service';
+import { getClassStatus } from '../status/service';
 
 interface Deps {
   /** Rate limiter for POST /classes/join (runs AFTER authenticate, keyed per user). */
@@ -62,6 +65,33 @@ export function createClassesRouter({ joinLimiter }: Deps): Router {
     await requireProfessor(requireAuth(req).user.id, classId);
     const input = parse(updateEnrollmentSchema, req.body);
     res.json({ enrollment: await updateStudentEnrollment(classId, enrollmentId, input) });
+  });
+
+  // ── Sessions & Live Status (Phase 3) ──
+
+  router.post('/:id/sessions', async (req, res) => {
+    const classId = parseId(req.params.id);
+    const userId = requireAuth(req).user.id;
+    await requireProfessor(userId, classId);
+    const input = parse(createSessionSchema, req.body);
+    const session = await createSession(userId, classId, input);
+    res.status(201).json({ session });
+  });
+
+  router.get('/:id/sessions', async (req, res) => {
+    const classId = parseId(req.params.id);
+    const userId = requireAuth(req).user.id;
+    await requireMember(userId, classId);
+    const sessions = await listSessions(classId);
+    res.json({ sessions });
+  });
+
+  router.get('/:id/status', async (req, res) => {
+    const classId = parseId(req.params.id);
+    const userId = requireAuth(req).user.id;
+    await requireProfessor(userId, classId);
+    const status = await getClassStatus(classId);
+    res.json({ status });
   });
 
   return router;
