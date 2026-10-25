@@ -149,6 +149,16 @@ export function createAuthRouter({ googleVerifier, authLimiter }: Deps): Router 
     res.json({ schedule });
   });
 
+  router.get('/me/data', authenticate, async (req, res, next) => {
+    try {
+      const { getUserDataExport } = await import('../privacy/service');
+      const data = await getUserDataExport(requireAuth(req).user.id);
+      res.json({ data });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 

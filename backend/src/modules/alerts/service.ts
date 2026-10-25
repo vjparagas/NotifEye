@@ -4,6 +4,7 @@ import { pool } from '../../db';
 import { HttpError } from '../../shared/errors';
 import { requireProfessor } from '../../shared/access-control';
 import { sendAlertEmail } from './mailer';
+import { sendDiscordAlert } from './discord';
 
 interface AlertRow {
   id: string;
@@ -54,28 +55,14 @@ export interface RecordAlertInput {
 export async function recordAlert(input: RecordAlertInput): Promise<AlertDTO | null> {
   const clientOrPool = input.clientOrPool ?? pool;
 
-  // 1. Insert alert if not already created
-  const { rows } = await clientOrPool.query<AlertRow>(
-    `INSERT INTO alerts (class_id, session_id, user_id, kind, message, channels_sent, created_at)
-     VALUES ($1, $2, $3, $4, $5, ARRAY['dashboard', 'email']::text[], now())
-     ON CONFLICT (session_id, user_id, kind) WHERE session_id IS NOT NULL DO NOTHING
-     RETURNING id, class_id, session_id, user_id, kind, message, channels_sent, created_at, read_at`,
-    [input.classId, input.sessionId, input.userId, input.kind, input.message],
-  );
-
-  const newAlert = rows[0];
-  if (!newAlert) {
-    // Already existed: idempotent no-op
-    return null;
-  }
-
-  // 2. Fetch class and student info for email notification
+  // 1. Fetch class and student info (including discord_webhook_url)
   const { rows: metaRows } = await clientOrPool.query<{
     class_name: string;
+    discord_webhook_url: string | null;
     student_name: string | null;
     student_email: string | null;
   }>(
-    `SELECT c.name AS class_name, u.name AS student_name, u.email AS student_email
+    `SELECT c.name AS class_name, c.discord_webhook_url, u.name AS student_name, u.email AS student_email
        FROM classes c
        LEFT JOIN users u ON u.id = $2
       WHERE c.id = $1`,
@@ -85,6 +72,23 @@ export async function recordAlert(input: RecordAlertInput): Promise<AlertDTO | n
   const meta = metaRows[0];
   const className = meta?.class_name ?? 'Class';
   const studentName = meta?.student_name ?? 'A student';
+  const hasDiscord = Boolean(input.kind === 'absent' && meta?.discord_webhook_url);
+  const channels = hasDiscord ? ['dashboard', 'email', 'discord'] : ['dashboard', 'email'];
+
+  // 2. Insert alert if not already created
+  const { rows } = await clientOrPool.query<AlertRow>(
+    `INSERT INTO alerts (class_id, session_id, user_id, kind, message, channels_sent, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], now())
+     ON CONFLICT (session_id, user_id, kind) WHERE session_id IS NOT NULL DO NOTHING
+     RETURNING id, class_id, session_id, user_id, kind, message, channels_sent, created_at, read_at`,
+    [input.classId, input.sessionId, input.userId, input.kind, input.message, channels],
+  );
+
+  const newAlert = rows[0];
+  if (!newAlert) {
+    // Already existed: idempotent no-op
+    return null;
+  }
 
   // 3. Find approved professor(s) of this class to send email to
   const { rows: profRows } = await clientOrPool.query<{ id: string; email: string; name: string }>(
@@ -104,6 +108,16 @@ export async function recordAlert(input: RecordAlertInput): Promise<AlertDTO | n
       studentName,
       className,
       kind: input.kind,
+      message: input.message,
+    });
+  }
+
+  // 4. Deliver to Discord webhook for absent alerts if configured
+  if (hasDiscord && meta?.discord_webhook_url) {
+    await sendDiscordAlert({
+      webhookUrl: meta.discord_webhook_url,
+      studentName,
+      className,
       message: input.message,
     });
   }

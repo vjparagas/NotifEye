@@ -5,3 +5,4 @@ export * from './sessions';
 export * from './status';
 export * from './attendance';
 export * from './alerts';
+export * from './privacy';
