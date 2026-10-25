@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import type { MyClassDTO, UserDTO } from '@notifeye/shared';
 import { extensionApi, ExtensionApiError } from './api';
 import { getStoredAuth, setStoredAuth } from './storage';
@@ -161,10 +161,7 @@ export function App() {
       <header className="brand">
         <div className="brand-main">
           <span className="logo" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
+<img src="../icons/icon128.png" alt="" width="44" height="44" />
           </span>
           <div>
             <h1>NotifEye</h1>
@@ -232,7 +229,7 @@ export function App() {
                   type="password"
                   className="input-text"
                   required
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -367,7 +364,7 @@ export function App() {
                       <div style={{ fontSize: '12px', fontWeight: 600 }}>{c.name}</div>
                       <div className="muted small" style={{ margin: 0 }}>
                         {c.platform === 'zoom' ? 'Zoom Web' : 'Google Meet'}
-                        {c.section ? ` · Sec: ${c.section}` : ''}
+                        {c.section ? ` Â· Sec: ${c.section}` : ''}
                       </div>
                     </div>
                     <span
@@ -386,7 +383,7 @@ export function App() {
       )}
 
       <footer className="muted small" style={{ textAlign: 'center', marginTop: '4px' }}>
-        v0.2 · Phase 2 verified
+        v0.2 Â· Phase 2 verified
       </footer>
     </main>
   );
