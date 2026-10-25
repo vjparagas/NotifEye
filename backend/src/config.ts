@@ -31,6 +31,17 @@ const schema = z.object({
   SENDGRID_API_KEY: z.string().optional(),
   DEMO_MODE: z.enum(['true', 'false']).default('false'),
   EVENT_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
+  // ── Phase 2: auth ──
+  /** bcrypt cost factor. Tests lower it (4) purely for speed; never below 10 in production. */
+  BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+  /** Applies to register / login / google. Counted per client IP. */
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+  AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().positive().default(15),
+  /** Applies to POST /classes/join. Counted per signed-in user (stops class-code guessing). */
+  JOIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  JOIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().positive().default(15),
+  /** Dashboard cookie SameSite. Use `none` only if dashboard and API are on different sites (needs HTTPS). */
+  COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -40,6 +51,10 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+
+if (env.NODE_ENV === 'production' && env.JWT_SECRET.startsWith('change-me')) {
+  throw new Error('Invalid environment configuration: set a real JWT_SECRET before running in production.');
+}
 
 export const config = {
   ...env,

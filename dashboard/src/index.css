@@ -1,0 +1,194 @@
+@import 'tailwindcss';
+
+/*
+ * NotifEye design tokens. Dark theme, glassy cards, colour-coded chips (plan section 8).
+ * The palette mirrors the extension popup so both surfaces feel like one product.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-ink: #0b1020;
+  --color-panel: #121936;
+  --color-line: rgba(160, 175, 255, 0.16);
+  --color-text: #eef1ff;
+  --color-muted: #98a2c3;
+  --color-accent: #7c8cff;
+  --color-accent-2: #38e1c6;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #fb7185;
+  --color-off: #6b7391;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-float: float 7s ease-in-out infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0);
+    }
+    50% {
+      transform: translate3d(0, -18px, 0);
+    }
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background:
+    radial-gradient(110% 80% at 0% 0%, rgba(124, 140, 255, 0.22), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgba(56, 225, 198, 0.14), transparent 55%),
+    var(--color-ink);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Glass surface used by every card. */
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  border: 1px solid var(--color-line);
+  border-radius: 1.1rem;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 40px rgba(2, 6, 23, 0.35);
+}
+
+.glass-hover {
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.glass-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(124, 140, 255, 0.5);
+  box-shadow: 0 16px 48px rgba(79, 99, 255, 0.22);
+}
+
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-line);
+  background: rgba(7, 11, 28, 0.55);
+  padding: 0.65rem 0.85rem;
+  color: var(--color-text);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.input::placeholder {
+  color: #6b7391;
+}
+.input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.25);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease,
+    background 0.15s ease;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.btn-primary {
+  color: #0b1020;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
+  box-shadow: 0 8px 22px rgba(124, 140, 255, 0.3);
+}
+.btn-primary:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+.btn-ghost {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--color-line);
+}
+.btn-ghost:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+.btn-danger {
+  color: #ffd9df;
+  background: rgba(251, 113, 133, 0.12);
+  border-color: rgba(251, 113, 133, 0.35);
+}
+
+/* Colour-coded status chips. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.18rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.chip::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+.chip-ok {
+  color: var(--color-ok);
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.chip-warn {
+  color: var(--color-warn);
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.chip-off {
+  color: #aab1cf;
+  background: rgba(107, 115, 145, 0.18);
+  border-color: rgba(107, 115, 145, 0.35);
+}
+.chip-info {
+  color: var(--color-accent);
+  background: rgba(124, 140, 255, 0.14);
+  border-color: rgba(124, 140, 255, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
