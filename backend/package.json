@@ -11,6 +11,7 @@
     "migrate:up": "npm run migrate -- up",
     "migrate:down": "npm run migrate -- down",
     "db:check": "tsx scripts/check-schema.ts",
+    "seed": "tsx scripts/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

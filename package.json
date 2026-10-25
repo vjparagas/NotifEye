@@ -17,6 +17,7 @@
     "db:check": "npm run db:check -w backend",
     "dev:backend": "npm run dev -w backend",
     "build:extension": "npm run build -w extension",
+    "seed": "npm run seed -w backend",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
